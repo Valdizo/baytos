@@ -31,3 +31,6 @@ web/ios/App/Pods/
 
 # os
 .DS_Store
+
+# ruflo/claude-flow tooling state — churns constantly, not project code
+.claude-flow/
