@@ -98,8 +98,13 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; c
 .pill.open { background: #e3e9e5; color: var(--ink-soft); }
 
 .panel { background: var(--surface); border: 1px solid var(--rule); padding: 22px 26px; max-width: 560px; }
-.auth { min-height: 100vh; display: grid; place-items: center; }
-.auth .panel { width: 420px; }
+/* minmax(0,1fr) stops the implicit grid column sizing to the panel's max-content
+   width; without it the column grows to 420px and the panel's max-width:100%
+   resolves against that instead of the screen. */
+.auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; }
+/* was a hard 420px, which overflowed every phone narrower than that (8px on a
+   412px Pixel, 100px on a 320px SE) and took vertical scrolling with it */
+.auth .panel { width: 420px; max-width: 100%; }
 .auth h1 { color: var(--cedar-deep); }
 
 .progress { height: 8px; background: var(--rule); border-radius: 4px; overflow: hidden; }
@@ -113,10 +118,14 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; c
 }
 
 /* Touch targets keyed to the input device, not the screen width, so a tablet or a
-   touchscreen laptop gets them too. 39px was under the 48dp Android / 44pt iOS minimum. */
+   touchscreen laptop gets them too. Android asks for 48dp, iOS for 44pt; measured
+   before this rule: nav links 39px, form controls 36px, "Sign out" 16px. */
 @media (pointer: coarse) {
   .rail nav a { padding: 14px 24px; }
   .t-tab { min-height: 48px; }
+  button, input, select, textarea { min-height: 48px; }
+  /* inline text links that act as controls need the height built from padding */
+  .rail .foot a, .t-signout { display: inline-block; min-height: 48px; line-height: 32px; padding: 8px 12px; }
 }
 
 /* ---------- Tenant mobile app (PWA) ---------- */
