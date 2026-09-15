@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# secrets — never commit
+.env
+.env.local
+.env.production
+
+# next.js build output
+.next/
+out/
+
+# nest build output
+dist/
+
+# capacitor: the web bundle is copied into the native projects by `cap sync`
+web/android/app/src/main/assets/public/
+web/ios/App/App/public/
+
+# native build artifacts
+web/android/.gradle/
+web/android/local.properties
+web/android/app/build/
+web/android/build/
+web/ios/App/build/
+web/ios/App/Pods/
+
+# ide
+.idea/
+.vscode/
+
+# os
+.DS_Store

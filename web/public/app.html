@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1a422e" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Baytos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='20' fill='%231a422e'/%3E%3Cpath d='M24 68V42l24-16 24 16v26h-16V52h-16v16z' fill='%23f1f3f1'/%3E%3C/svg%3E" />
+
+<!-- ============================================================
+     BAYTOS — single-file tenant app. No build tools, no libraries,
+     no internet needed to open it (Stripe's script loads only when
+     you add a card). Works from a double-click, a static host, or
+     http://localhost:3000/app.html if the web portal is running.
+     1. Start the backend (LAUNCH_GUIDE.md §2).
+     2. Open this file → ⚙ → set API URL + Stripe pk_test key.
+     Card entry uses Stripe's hosted iframe — the card number never
+     touches the Baytos backend; only a token + last4 is stored.
+     ============================================================ -->
+
+<style>
+  :root {
+    --paper:#f1f3f1; --surface:#fff; --ink:#1a2620; --soft:#4a5a51;
+    --cedar:#245b3f; --cedar-deep:#1a422e; --brass:#8a6d1f; --clay:#a63b2a; --rule:#d5dcd6;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); }
+  .app { min-height: 100dvh; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; }
+  @media (min-width: 561px) { .app { border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); } }
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; padding-top: calc(14px + env(safe-area-inset-top)); background: var(--cedar-deep); color: #fff; position: sticky; top: 0; z-index: 5; }
+  .brand { font-weight: 800; font-size: 18px; letter-spacing: -.3px; }
+  .top .actions { display: flex; gap: 8px; }
+  .top button { background: none; border: 1px solid rgba(255,255,255,.35); color: #cfdcd3; font-size: 12px; padding: 5px 10px; border-radius: 5px; }
+  .main { flex: 1; padding: 18px; padding-bottom: 92px; }
+  .nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 560px; display: flex; background: #fff; border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 0 7px; color: var(--soft); font-size: 11px; font-weight: 600; background: none; border: none; }
+  .tab.on { color: var(--cedar); }
+  .due { background: var(--cedar-deep); border-radius: 12px; padding: 22px; color: #fff; }
+  .due .label { color: #cfdcd3; font-size: 13px; }
+  .due .amount { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .due .sub { color: #cfdcd3; font-size: 13px; margin-top: 2px; }
+  .due button { width: 100%; margin-top: 16px; background: var(--brass); border: none; color: #fff; font-weight: 700; padding: 13px; border-radius: 7px; font-size: 15px; }
+  .card { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 16px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px; margin-bottom: 8px; width: 100%; text-align: left; font: inherit; color: inherit; }
+  button.row { cursor: pointer; }
+  .row .grow { flex: 1; min-width: 0; }
+  .row .title { font-weight: 700; display: block; }
+  .row .sub { color: var(--soft); font-size: 12px; }
+  .row .amt { font-weight: 700; color: var(--brass); font-variant-numeric: tabular-nums; }
+  .h { font-size: 16px; font-weight: 700; margin: 22px 0 8px; }
+  .line { display: flex; padding: 13px 14px; align-items: baseline; gap: 8px; cursor: pointer; }
+  .line + .line, .calc + .line { border-top: 1px solid var(--rule); }
+  .line .desc { flex: 1; font-weight: 600; }
+  .line .qty { color: var(--soft); font-size: 12px; display: block; font-weight: 400; }
+  .line .amt { font-weight: 700; color: var(--brass); font-variant-numeric: tabular-nums; }
+  .line .amt.credit { color: var(--cedar); }
+  .calc { background: #f4f7f4; padding: 10px 14px; font-size: 13px; color: var(--soft); line-height: 1.6; border-top: 1px solid var(--rule); }
+  .total { display: flex; padding: 14px; border-top: 2px solid var(--cedar); font-weight: 800; }
+  .total .amt { margin-left: auto; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .btn { display: block; width: 100%; background: var(--cedar); color: #fff; border: none; font-weight: 700; padding: 14px; border-radius: 8px; font-size: 15px; text-align: center; cursor: pointer; }
+  .btn.gold { background: var(--brass); }
+  .btn.red { background: var(--clay); }
+  .btn.gray { background: #e3e9e5; color: var(--soft); }
+  .btn:disabled { opacity: .6; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { border: 1px solid var(--rule); background: #fff; border-radius: 15px; padding: 6px 12px; font-size: 13px; color: var(--soft); cursor: pointer; }
+  .chip.on { background: var(--cedar); border-color: var(--cedar); color: #fff; font-weight: 700; }
+  .input { width: 100%; border: 1px solid var(--rule); border-radius: 7px; padding: 12px; font-size: 15px; margin-bottom: 8px; font-family: inherit; background: #fff; }
+  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .quick button { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 13px; text-align: center; color: var(--cedar); font-weight: 700; font-size: 14px; cursor: pointer; }
+  .pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 11px; white-space: nowrap; }
+  .pill.paid { background: #dcebe2; color: var(--cedar-deep); }
+  .pill.due { background: #f3ecd7; color: var(--brass); }
+  .pill.void { background: #e3e9e5; color: var(--soft); }
+  .progress { height: 8px; background: var(--rule); border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .progress i { display: block; height: 8px; background: var(--cedar); }
+  .note { color: var(--soft); font-size: 12px; line-height: 1.5; margin-top: 10px; }
+  .err { color: var(--clay); font-size: 13px; margin: 8px 0; }
+  .ok { color: var(--cedar); font-size: 13px; font-weight: 600; margin: 8px 0; }
+  .seg { display: flex; gap: 6px; margin-bottom: 14px; }
+  .seg button { flex: 1; border: 1px solid var(--rule); background: #fff; border-radius: 7px; padding: 9px; font-size: 13px; color: var(--soft); font-weight: 600; cursor: pointer; }
+  .seg button.on { background: var(--cedar); border-color: var(--cedar); color: #fff; }
+  .switchrow { display: flex; align-items: center; gap: 12px; }
+  .switchrow .grow { flex: 1; font-weight: 600; }
+  .switchrow input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--cedar); }
+  .auth { min-height: 100dvh; background: var(--cedar-deep); display: flex; flex-direction: column; justify-content: center; padding: 28px; max-width: 560px; margin: 0 auto; }
+  .auth h1 { color: #fff; font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
+  .auth .tag { color: #cfdcd3; margin: 4px 0 28px; }
+  .auth input { background: #fff; border: none; border-radius: 6px; padding: 13px; margin-bottom: 10px; font-size: 15px; width: 100%; }
+  .auth .btn { background: var(--brass); margin-top: 6px; }
+  .auth .link { color: #cfdcd3; text-align: center; margin-top: 18px; background: none; border: none; font-size: 14px; width: 100%; cursor: pointer; }
+  .auth .err { color: #f3c1b8; }
+  .center { text-align: center; }
+  .vrow { display: flex; gap: 8px; margin-top: 10px; }
+  .vrow .btn { flex: 1; padding: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="root"><div class="auth"><h1>Baytos</h1><div class="tag">Loading…</div></div></div>
+
+<script>
+'use strict';
+/* ---------- config + state ---------- */
+var CFG = {
+  API: localStorage.getItem('baytos_api') || 'http://localhost:4000',
+  PK: localStorage.getItem('baytos_pk') || ''
+};
+var S = {
+  route: 'boot', params: {}, me: null, authMode: 'login',
+  bills: [], bill: null, openLine: null,
+  meters: [], meterMsgs: {}, meterHist: {},
+  bTab: 'maintenance', requests: [], claims: [], proposals: [], projects: [],
+  reqCategory: 'PLUMBING', reqScope: 'COMMON_AREA',
+  methods: [], session: null, mandateOn: false,
+  msg: '', err: '', buildingId: '', stripe: null, elements: null
+};
+var root = document.getElementById('root');
+
+window.onerror = function (m) {
+  root.innerHTML = '<div class="main"><p class="err">Something went wrong: ' + esc(String(m)) + '</p></div>';
+};
+
+/* ---------- helpers ---------- */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function money(minor, currency) {
+  var sign = minor < 0 ? '-' : '';
+  var sym = (!currency || currency === 'USD') ? '$' : currency + ' ';
+  return sign + sym + (Math.abs(minor) / 100).toFixed(2);
+}
+function api(path, opts) {
+  opts = opts || {};
+  var headers = { 'Content-Type': 'application/json' };
+  var token = localStorage.getItem('baytos_token');
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return fetch(CFG.API + path, { method: opts.method || 'GET', headers: headers, body: opts.body }).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (body) {
+      if (!res.ok) {
+        var m = body && body.message ? [].concat(body.message).join(', ') : 'Request failed (' + res.status + ')';
+        var e = new Error(m); e.status = res.status; throw e;
+      }
+      return body;
+    });
+  });
+}
+function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function membership() {
+  if (!S.me) return null;
+  return S.me.memberships.filter(function (m) { return m.unitId; })[0] || null;
+}
+function dateStr(d) { return new Date(d).toLocaleDateString(); }
+
+/* ---------- navigation ---------- */
+function GO(route, params) {
+  S.route = route; S.params = params || {}; S.msg = ''; S.err = ''; S.openLine = null; S.session = null;
+  render();
+  if (route === 'home') loadHome();
+  if (route === 'bill') loadBill();
+  if (route === 'meters') loadMeters();
+  if (route === 'building') loadBuilding();
+  if (route === 'card') loadCard();
+}
+function boot() {
+  if (!localStorage.getItem('baytos_token')) return GO('login');
+  api('/v1/auth/me').then(function (me) {
+    S.me = me;
+    GO(membership() ? 'home' : 'join');
+  }).catch(function (e) {
+    if (e.status === 401) { localStorage.removeItem('baytos_token'); GO('login'); }
+    else { S.err = 'Cannot reach the server at ' + CFG.API + ' — is the backend running? (' + e.message + ')'; GO('login'); }
+  });
+}
+function signOut() { localStorage.removeItem('baytos_token'); S.me = null; GO('login'); }
+
+/* ---------- shell + render ---------- */
+function shell(content, activeTab) {
+  var tabs = [
+    ['home', 'Home', 'M12 3 3 10v10h6v-6h6v6h6V10z'],
+    ['meters', 'Meters', 'M12 4a8 8 0 0 0-8 8h3.5a4.5 4.5 0 1 1 9 0H20a8 8 0 0 0-8-8zm0 10 3.5-4.5L10 12z'],
+    ['building', 'Building', 'M4 21V5l8-3 8 3v16h-5v-5h-6v5zM9 8h2v2H9zm4 0h2v2h-2zM9 12h2v2H9zm4 0h2v2h-2z'],
+    ['card', 'Card', 'M2 5h20v4H2zm0 6h20v8H2zm3 4h6v2H5z']
+  ];
+  var nav = '<div class="nav">' + tabs.map(function (t) {
+    return '<button class="tab ' + (activeTab === t[0] ? 'on' : '') + '" onclick="GO(\'' + t[0] + '\')">' +
+      '<svg viewBox="0 0 24 24" width="22" height="22"><path d="' + t[2] + '" fill="currentColor"/></svg>' + t[1] + '</button>';
+  }).join('') + '</div>';
+  root.innerHTML =
+    '<div class="app">' +
+      '<div class="top"><span class="brand">Baytos</span><span class="actions">' +
+        '<button onclick="GO(\'settings\')">&#9881;</button>' +
+        '<button onclick="signOut()">Sign out</button></span></div>' +
+      '<div class="main" id="main">' + content + '</div>' + nav +
+    '</div>';
+}
+function shellless(content) {
+  root.innerHTML =
+    '<div class="app">' +
+      '<div class="top"><span class="brand">Baytos</span><span class="actions">' +
+        (localStorage.getItem('baytos_token') ? '<button onclick="signOut()">Sign out</button>' : '<button onclick="GO(\'login\')">Back</button>') +
+      '</span></div>' +
+      '<div class="main">' + content + '</div>' +
+    '</div>';
+}
+function render() {
+  if (S.route === 'login') return renderLogin();
+  if (S.route === 'join') return shellless(joinHtml());
+  if (S.route === 'settings') return shellless(settingsHtml());
+  if (S.route === 'home') return shell(homeHtml(), 'home');
+  if (S.route === 'bill') return shell(billHtml(), 'home');
+  if (S.route === 'meters') return shell(metersHtml(), 'meters');
+  if (S.route === 'building') return shell(buildingHtml(), 'building');
+  if (S.route === 'card') return shell(cardHtml(), 'card');
+}
+function rerenderMain() { render(); }
+
+/* ---------- login ---------- */
+function renderLogin() {
+  var reg = S.authMode === 'register';
+  root.innerHTML =
+    '<div class="auth">' +
+      '<h1>Baytos</h1><div class="tag">Your building, one clear bill</div>' +
+      (S.err ? '<div class="err">' + esc(S.err) + '</div>' : '') +
+      (reg ? '<input id="f-name" placeholder="Full name" />' : '') +
+      '<input id="f-email" placeholder="Email" autocapitalize="none" inputmode="email" />' +
+      '<input id="f-pass" type="password" placeholder="Password" />' +
+      '<button class="btn" onclick="doAuth()">' + (reg ? 'Create account' : 'Sign in') + '</button>' +
+      '<button class="link" onclick="toggleAuth()">' +
+        (reg ? 'Have an account? Sign in' : 'New here? Create an account') + '</button>' +
+      '<button class="link" onclick="GO(\'settings\')">&#9881; Server settings</button>' +
+    '</div>';
+}
+function toggleAuth() { S.authMode = S.authMode === 'login' ? 'register' : 'login'; S.err = ''; renderLogin(); }
+function doAuth() {
+  S.err = '';
+  var body = { email: val('f-email'), password: val('f-pass') };
+  if (S.authMode === 'register') body.name = val('f-name');
+  var path = S.authMode === 'register' ? '/v1/auth/register' : '/v1/auth/login';
+  api(path, { method: 'POST', body: JSON.stringify(body) }).then(function (r) {
+    localStorage.setItem('baytos_token', r.accessToken);
+    boot();
+  }).catch(function (e) {
+    S.err = e.status ? e.message : 'Cannot reach the server at ' + CFG.API + ' — check &#9881; Server settings and that the backend is running.';
+    renderLogin();
+  });
+}
+
+/* ---------- join ---------- */
+function joinHtml() {
+  return '<h2 class="h" style="margin-top:0">Enter your invitation code</h2>' +
+    '<p class="note" style="margin-bottom:16px">Your building president or manager creates an invitation for your apartment and gives you an 8-character code. When you join, record your meters\u2019 current readings with the manager — you\u2019ll never pay for consumption from before your move-in.</p>' +
+    (S.err ? '<div class="err">' + esc(S.err) + '</div>' : '') +
+    '<input class="input" id="f-code" style="letter-spacing:4px;text-align:center;text-transform:uppercase;font-size:18px" placeholder="4F2A9C1B" />' +
+    '<button class="btn" onclick="doJoin()">Join apartment</button>';
+}
+function doJoin() {
+  S.err = '';
+  api('/v1/invitations/accept', { method: 'POST', body: JSON.stringify({ code: val('f-code').trim().toUpperCase() }) })
+    .then(boot).catch(function (e) { S.err = e.message; render(); });
+}
+
+/* ---------- settings ---------- */
+function settingsHtml() {
+  return '<div class="h" style="margin-top:0">Server settings</div>' +
+    '<p class="note" style="margin-bottom:12px">Point the app at your Baytos backend. On a phone, use your computer\u2019s LAN IP (e.g. http://192.168.1.20:4000). The Stripe publishable key (pk_test_\u2026) is safe to enter here — it is public by design.</p>' +
+    '<label class="note">Backend API URL</label>' +
+    '<input class="input" id="f-api" value="' + esc(CFG.API) + '" placeholder="http://localhost:4000" />' +
+    '<label class="note">Stripe publishable key</label>' +
+    '<input class="input" id="f-pk" value="' + esc(CFG.PK) + '" placeholder="pk_test_\u2026" />' +
+    '<button class="btn" onclick="saveSettings()">Save</button>';
+}
+function saveSettings() {
+  CFG.API = val('f-api').replace(/\/+$/, '');
+  CFG.PK = val('f-pk').trim();
+  localStorage.setItem('baytos_api', CFG.API);
+  localStorage.setItem('baytos_pk', CFG.PK);
+  boot();
+}
+
+/* ---------- home ---------- */
+function loadHome() {
+  api('/v1/bills/mine').then(function (b) { S.bills = b; rerenderMain(); }).catch(function () {});
+}
+function homeHtml() {
+  var m = membership();
+  var due = S.bills.filter(function (b) { return ['ISSUED', 'OVERDUE', 'PARTIALLY_PAID'].indexOf(b.status) >= 0; });
+  var dueTotal = due.reduce(function (s, b) { return s + b.totalMinor; }, 0);
+  var h = '';
+  if (m) h += '<p style="color:var(--soft);font-weight:600;margin-bottom:12px">' + esc(m.building.nameEn) + ' · Unit ' + esc(m.unit && m.unit.unitNumber) + '</p>';
+  h += '<div class="due"><div class="label">Amount due</div><div class="amount">' + money(dueTotal) + '</div>';
+  if (due[0]) {
+    h += '<div class="sub">Due ' + dateStr(due[0].dueAt) + '</div>' +
+         '<button onclick="GO(\'bill\',{id:\'' + due[0].id + '\'})">View statement &amp; pay</button>';
+  } else {
+    h += '<div class="sub">Nothing due — you\u2019re all settled.</div>';
+  }
+  h += '</div>';
+  h += '<div class="quick">' +
+    '<button onclick="GO(\'meters\')">Submit reading</button>' +
+    '<button onclick="GO(\'building\',{tab:\'maintenance\'})">Maintenance</button>' +
+    '<button onclick="GO(\'building\',{tab:\'votes\'})">Votes</button>' +
+    '<button onclick="GO(\'card\')">Card &amp; autopay</button></div>';
+  h += '<div class="h">Statements</div>';
+  h += S.bills.map(function (b) {
+    var pill = b.status === 'PAID' ? 'paid' : (b.status === 'VOID' ? 'void' : 'due');
+    var label = b.status === 'VOID' ? 'rolled over' : b.status.toLowerCase().replace(/_/g, ' ');
+    return '<button class="row" onclick="GO(\'bill\',{id:\'' + b.id + '\'})">' +
+      '<span class="grow"><span class="title">' + esc(b.period.label) + '</span><span class="sub">' + esc(b.period.building.nameEn) + '</span></span>' +
+      '<span class="amt">' + money(b.totalMinor, b.currency) + '</span>' +
+      '<span class="pill ' + pill + '">' + label + '</span></button>';
+  }).join('');
+  if (!S.bills.length) h += '<p class="note">No statements yet — your first one appears when the building closes a billing period.</p>';
+  return h;
+}
+
+/* ---------- bill detail ---------- */
+function loadBill() {
+  S.bill = null;
+  api('/v1/bills/' + S.params.id).then(function (b) { S.bill = b; rerenderMain(); })
+    .catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+function billHtml() {
+  var b = S.bill;
+  if (!b) return '<p class="note">' + (S.err ? esc(S.err) : 'Loading…') + '</p>';
+  var h = '<div style="font-size:19px;font-weight:700">' + esc(b.period.building.nameEn) + ' — Unit ' + esc(b.unit.unitNumber) + '</div>' +
+    '<p style="color:var(--soft);margin-bottom:14px">Period ' + esc(b.period.label) + ' · due ' + dateStr(b.dueAt) + '</p>' +
+    '<div class="card" style="padding:0;overflow:hidden">';
+  h += b.lineItems.map(function (l) {
+    var c = l.calculation || {};
+    var s = '<div class="line" onclick="togCalc(\'' + l.id + '\')">' +
+      '<span style="flex:1"><span class="desc">' + esc(l.description) + '</span>' +
+      (l.quantity != null ? '<span class="qty">' + Number(l.quantity).toFixed(1) + ' ' + esc(l.unitLabel || '') + '</span>' : '') + '</span>' +
+      '<span class="amt' + (l.amountMinor < 0 ? ' credit' : '') + '">' + money(l.amountMinor, b.currency) + '</span></div>';
+    if (S.openLine === l.id && l.calculation) {
+      s += '<div class="calc">' +
+        (c.previousReading != null ? '<div>Previous reading: ' + Number(c.previousReading).toFixed(1) + '</div>' : '') +
+        (c.currentReading != null ? '<div>Current reading: ' + Number(c.currentReading).toFixed(1) + '</div>' : '') +
+        (c.ratePerUnitMinor != null ? '<div>Rate: ' + money(c.ratePerUnitMinor) + ' per unit</div>' : '') +
+        (c.fixedFeeMinor > 0 ? '<div>Fixed fee: ' + money(c.fixedFeeMinor) + '</div>' : '') +
+        (c.totalMinor != null ? '<div>Expense total: ' + money(c.totalMinor) + ' — split: ' + esc((c.allocation || '').toLowerCase()) + '</div>' : '') +
+        '</div>';
+    }
+    return s;
+  }).join('');
+  h += '<div class="total"><span>Total</span><span class="amt">' + money(b.totalMinor, b.currency) + '</span></div></div>';
+  if (S.msg) h += '<p class="note" style="margin-bottom:10px">' + esc(S.msg) + '</p>';
+  if (['PAID', 'VOID'].indexOf(b.status) < 0) {
+    h += '<button class="btn gold" id="paybtn" onclick="payBill()">Pay ' + money(b.totalMinor, b.currency) + ' now</button>';
+  }
+  if (b.status === 'PAID') h += '<p class="ok center">Paid — thank you.</p>';
+  if (b.payments && b.payments.length) {
+    h += '<div class="h">Payment history</div>' + b.payments.map(function (p) {
+      return '<p class="note" style="margin-top:4px">' + new Date(p.createdAt).toLocaleString() + ' — ' + money(p.amountMinor) +
+        ' — ' + esc(p.status.toLowerCase()) + (p.failureReason ? ' (' + esc(p.failureReason) + ')' : '') + '</p>';
+    }).join('');
+  }
+  h += '<p class="note center" style="margin-top:16px">Tap any line to see how it was calculated.</p>';
+  return h;
+}
+function togCalc(id) { S.openLine = S.openLine === id ? null : id; rerenderMain(); }
+function payBill() {
+  var btn = document.getElementById('paybtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Charging…'; }
+  S.msg = '';
+  api('/v1/bills/' + S.params.id + '/pay', { method: 'POST', body: '{}' }).then(function (r) {
+    S.msg = r.charged ? 'Paid — your card was charged successfully.' : 'The charge did not complete. Add a card under the Card tab first.';
+    loadBill();
+  }).catch(function (e) { S.msg = 'Payment failed: ' + e.message; loadBill(); });
+}
+
+/* ---------- meters ---------- */
+function loadMeters() {
+  var m = membership();
+  if (!m) return;
+  api('/v1/buildings/' + m.building.id + '/units').then(function (units) {
+    var mine = units.filter(function (u) { return u.id === m.unitId; })[0];
+    S.meters = (mine && mine.meters) || [];
+    rerenderMain();
+  }).catch(function () {});
+}
+function metersHtml() {
+  var h = '<p class="note" style="margin-top:0;margin-bottom:14px">Enter the number shown on each of your meters. Readings below the previous verified value are rejected automatically.</p>';
+  h += S.meters.map(function (m) {
+    var s = '<div class="card"><div style="font-weight:700;margin-bottom:8px">' + esc(m.type.replace(/_/g, ' ')) +
+      ' <span style="color:var(--soft);font-weight:400">(' + esc(m.unitLabel) + ')</span></div>' +
+      '<input class="input" id="mv-' + m.id + '" style="text-align:right;font-size:17px" inputmode="decimal" placeholder="e.g. 4390.0" />' +
+      '<button class="btn" onclick="submitReading(\'' + m.id + '\')">Submit reading</button>';
+    if (S.meterMsgs[m.id]) s += '<p class="note">' + esc(S.meterMsgs[m.id]) + '</p>';
+    s += '<button class="chip" style="margin-top:10px" onclick="togHist(\'' + m.id + '\')">' + (S.meterHist[m.id] ? 'Hide history' : 'Consumption history') + '</button>';
+    if (S.meterHist[m.id]) {
+      s += S.meterHist[m.id].map(function (r) {
+        return '<p class="note" style="margin-top:4px">' + dateStr(r.takenAt) + ' — ' + Number(r.value).toFixed(1) +
+          (r.delta != null ? ' <b>(+' + Number(r.delta).toFixed(1) + ')</b>' : '') + ' · ' + esc(r.status.toLowerCase().replace(/_/g, ' ')) + '</p>';
+      }).join('');
+    }
+    return s + '</div>';
+  }).join('');
+  if (!S.meters.length) h += '<p class="note">No meters are registered for your apartment yet — ask your building manager.</p>';
+  return h;
+}
+function submitReading(id) {
+  var v = val('mv-' + id);
+  api('/v1/meters/' + id + '/readings', { method: 'POST', body: JSON.stringify({ value: v }) }).then(function (r) {
+    S.meterMsgs[id] = r.delta != null
+      ? 'Submitted. Consumption since last reading: ' + Number(r.delta).toFixed(1) + '. Your manager verifies it before billing.'
+      : 'Submitted. Your manager verifies it before billing.';
+    rerenderMain();
+  }).catch(function (e) { S.meterMsgs[id] = 'Not accepted: ' + e.message; rerenderMain(); });
+}
+function togHist(id) {
+  if (S.meterHist[id]) { delete S.meterHist[id]; return rerenderMain(); }
+  api('/v1/meters/' + id + '/consumption').then(function (h) { S.meterHist[id] = h; rerenderMain(); }).catch(function () {});
+}
+
+/* ---------- building ---------- */
+function loadBuilding() {
+  var m = membership() || (S.me && S.me.memberships[0]);
+  if (!m) return;
+  S.buildingId = m.building.id;
+  if (S.params.tab) S.bTab = S.params.tab;
+  Promise.all([
+    api('/v1/buildings/' + S.buildingId + '/maintenance'),
+    api('/v1/buildings/' + S.buildingId + '/reimbursements'),
+    api('/v1/buildings/' + S.buildingId + '/proposals'),
+    api('/v1/buildings/' + S.buildingId + '/projects')
+  ]).then(function (r) {
+    S.requests = r[0]; S.claims = r[1]; S.proposals = r[2]; S.projects = r[3];
+    rerenderMain();
+  }).catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+function buildingHtml() {
+  var h = '<div class="seg">' +
+    '<button class="' + (S.bTab === 'maintenance' ? 'on' : '') + '" onclick="setBTab(\'maintenance\')">Maintenance</button>' +
+    '<button class="' + (S.bTab === 'votes' ? 'on' : '') + '" onclick="setBTab(\'votes\')">Votes &amp; projects</button></div>';
+  if (S.msg) h += '<p class="ok" style="margin-bottom:10px">' + esc(S.msg) + '</p>';
+  if (S.err) h += '<p class="err">' + esc(S.err) + '</p>';
+
+  if (S.bTab === 'maintenance') {
+    h += '<div class="card"><div class="chips">' +
+      ['PLUMBING', 'ELECTRICAL', 'ELEVATOR', 'GENERATOR', 'CLEANING', 'OTHER'].map(function (c) {
+        return '<button class="chip ' + (S.reqCategory === c ? 'on' : '') + '" onclick="pickChip(this,\'reqCategory\',\'' + c + '\')">' + c.toLowerCase() + '</button>';
+      }).join('') + '</div><div class="chips">' +
+      [['COMMON_AREA', 'Common area'], ['PRIVATE_UNIT', 'My apartment']].map(function (p) {
+        return '<button class="chip ' + (S.reqScope === p[0] ? 'on' : '') + '" onclick="pickChip(this,\'reqScope\',\'' + p[0] + '\')">' + p[1] + '</button>';
+      }).join('') + '</div>' +
+      '<input class="input" id="rq-title" placeholder="Title — e.g. Water leaking beside main pump" />' +
+      '<textarea class="input" id="rq-desc" rows="3" placeholder="Describe the problem"></textarea>' +
+      '<button class="btn" onclick="submitRequest()">Submit request</button></div>';
+    h += S.requests.map(function (r) {
+      return '<div class="row"><span class="grow"><span class="title">' + esc(r.title) + '</span>' +
+        '<span class="sub">' + esc(r.category.toLowerCase()) + ' · ' + (r.scope === 'COMMON_AREA' ? 'common area' : 'apartment') + '</span></span>' +
+        '<span class="pill void">' + esc(r.status.toLowerCase().replace(/_/g, ' ')) + '</span></div>';
+    }).join('');
+    h += '<div class="h">Paid for the building? Claim it back</div>' +
+      '<div class="card"><input class="input" id="cl-desc" placeholder="What did you pay for?" />' +
+      '<input class="input" id="cl-amt" inputmode="decimal" placeholder="Amount ($)" />' +
+      '<button class="btn" onclick="submitClaim()">Request reimbursement</button></div>';
+    h += S.claims.map(function (c) {
+      return '<div class="row"><span class="grow"><span class="title">' + esc(c.description) + '</span>' +
+        '<span class="sub">' + money(c.amountMinor) + '</span></span>' +
+        '<span class="pill void">' + esc(c.status.toLowerCase()) + '</span></div>';
+    }).join('');
+  } else {
+    h += S.proposals.map(function (p) {
+      var s = '<div class="card"><div style="font-weight:700;font-size:15px">' + esc(p.titleEn) + '</div>';
+      if (p.titleAr) s += '<div dir="rtl" style="color:var(--soft)">' + esc(p.titleAr) + '</div>';
+      s += '<p style="color:var(--soft);margin-top:4px;line-height:1.5">' + esc(p.description) + '</p>';
+      if (p.estimatedCostMinor) s += '<p style="color:var(--brass);font-weight:700;margin-top:6px">Estimated cost: ' + money(p.estimatedCostMinor) + '</p>';
+      s += '<p class="note">' + p.tally.approve + ' approve · ' + p.tally.reject + ' reject · closes ' + dateStr(p.closesAt) + ' · one vote per apartment</p>';
+      if (p.status === 'OPEN') {
+        s += '<div class="vrow">' +
+          '<button class="btn" onclick="voteP(\'' + p.id + '\',\'APPROVE\')">Approve</button>' +
+          '<button class="btn red" onclick="voteP(\'' + p.id + '\',\'REJECT\')">Reject</button>' +
+          '<button class="btn gray" onclick="voteP(\'' + p.id + '\',\'ABSTAIN\')">Abstain</button></div>';
+      } else {
+        s += '<p style="font-weight:800;margin-top:8px;color:' + (p.status === 'APPROVED' ? 'var(--cedar)' : 'var(--clay)') + '">' + esc(p.status) + '</p>';
+      }
+      return s + '</div>';
+    }).join('');
+    h += '<div class="h">Project funds</div>';
+    h += S.projects.map(function (p) {
+      return '<div class="card"><div style="font-weight:700">' + esc(p.title) + '</div>' +
+        (p.description ? '<p style="color:var(--soft);margin-top:3px">' + esc(p.description) + '</p>' : '') +
+        '<div class="progress"><i style="width:' + (p.progressPercent || 0) + '%"></i></div>' +
+        '<p class="note">' + money(p.collectedMinor) + ' of ' + money(p.targetMinor) + ' (' + p.progressPercent + '%) · ' +
+        money(p.monthlyPerUnitMinor) + '/apartment/month</p></div>';
+    }).join('');
+  }
+  return h;
+}
+function setBTab(t) { S.bTab = t; S.msg = ''; S.err = ''; rerenderMain(); }
+function pickChip(el, key, value) {
+  S[key] = value;
+  var sibs = el.parentNode.children;
+  for (var i = 0; i < sibs.length; i++) sibs[i].className = 'chip';
+  el.className = 'chip on';
+}
+function submitRequest() {
+  S.msg = ''; S.err = '';
+  api('/v1/buildings/' + S.buildingId + '/maintenance', {
+    method: 'POST',
+    body: JSON.stringify({ category: S.reqCategory, scope: S.reqScope, title: val('rq-title'), description: val('rq-desc') })
+  }).then(function () { S.msg = 'Submitted — your building manager has been notified.'; loadBuilding(); })
+    .catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+function submitClaim() {
+  S.msg = ''; S.err = '';
+  api('/v1/buildings/' + S.buildingId + '/reimbursements', {
+    method: 'POST',
+    body: JSON.stringify({ description: val('cl-desc'), amountMinor: Math.round(parseFloat(val('cl-amt')) * 100) })
+  }).then(function () { S.msg = 'Claim submitted — if approved, it is credited on your next statement.'; loadBuilding(); })
+    .catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+function voteP(pid, choice) {
+  api('/v1/proposals/' + pid + '/votes', { method: 'POST', body: JSON.stringify({ choice: choice }) })
+    .then(loadBuilding).catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+
+/* ---------- card & autopay ---------- */
+function loadCard() {
+  api('/v1/payment-methods/mine').then(function (m) { S.methods = m; rerenderMain(); }).catch(function () {});
+}
+function cardHtml() {
+  var h = '<div class="h" style="margin-top:0">Saved cards</div>';
+  h += S.methods.map(function (m) {
+    return '<div class="card"><div style="font-weight:700">' + esc((m.brand || 'card').toUpperCase()) + ' •••• ' + esc(m.last4) + '</div>' +
+      '<div class="note" style="margin-top:2px">expires ' + esc(m.expMonth) + '/' + esc(m.expYear) + '</div></div>';
+  }).join('');
+  if (!S.session) {
+    h += '<button class="btn" onclick="startAdd()">' + (S.methods.length ? 'Replace card' : 'Add payment method') + '</button>';
+  } else {
+    h += '<div class="card"><div id="pay-el"></div>' +
+      '<button class="btn" id="savecard" style="margin-top:12px" onclick="saveCard()">Save card securely</button></div>';
+  }
+  h += '<p class="note">Your card details go directly to the payment provider\u2019s secure form. Baytos only ever stores a payment token and the last 4 digits.</p>';
+  if (S.msg) h += '<p class="ok">' + esc(S.msg) + '</p>';
+  if (S.err) h += '<p class="err">' + esc(S.err) + '</p>';
+  h += '<div class="h">Autopay</div><div class="card">' +
+    '<div class="switchrow"><span class="grow">Charge my card automatically when a bill is issued</span>' +
+    '<input type="checkbox" ' + (S.mandateOn ? 'checked' : '') + ' onchange="saveMandate(this.checked)" /></div>' +
+    '<p class="note">Per-charge limit ($) — larger bills always ask you first</p>' +
+    '<input class="input" id="cap" inputmode="decimal" style="text-align:right;font-size:16px" value="300" /></div>';
+  return h;
+}
+function loadStripeJs() {
+  return new Promise(function (resolve, reject) {
+    if (window.Stripe) return resolve();
+    var s = document.createElement('script');
+    s.src = 'https://js.stripe.com/v3';
+    s.onload = resolve;
+    s.onerror = function () { reject(new Error('Could not load Stripe — an internet connection is needed to add a card.')); };
+    document.head.appendChild(s);
+  });
+}
+function startAdd() {
+  S.msg = ''; S.err = '';
+  if (!CFG.PK) { S.err = 'Set your Stripe publishable key (pk_test_\u2026) in \u2699 Server settings first.'; return rerenderMain(); }
+  loadStripeJs().then(function () {
+    return api('/v1/payment-methods/setup-session', { method: 'POST' });
+  }).then(function (session) {
+    S.session = session;
+    rerenderMain();
+    S.stripe = Stripe(CFG.PK);
+    S.elements = S.stripe.elements({ clientSecret: session.clientSecret });
+    S.elements.create('payment').mount('#pay-el');
+  }).catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+function saveCard() {
+  var btn = document.getElementById('savecard');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  S.stripe.confirmSetup({
+    elements: S.elements,
+    redirect: 'if_required',
+    confirmParams: { return_url: window.location.href }
+  }).then(function (r) {
+    if (r.error) throw new Error(r.error.message || 'Card was not saved');
+    return api('/v1/payment-methods/attach', { method: 'POST', body: JSON.stringify({ provider: 'STRIPE', customerId: S.session.customerId }) });
+  }).then(function () {
+    S.session = null; S.msg = 'Card saved.'; loadCard();
+  }).catch(function (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save card securely'; }
+    var old = document.getElementById('card-err');
+    if (old) old.remove();
+    var p = document.createElement('p');
+    p.className = 'err'; p.id = 'card-err'; p.textContent = e.message;
+    if (btn) btn.parentNode.appendChild(p);
+  });
+}
+function saveMandate(enabled) {
+  S.msg = ''; S.err = '';
+  var m = membership();
+  if (!S.methods[0]) { S.err = 'Add a card first.'; return rerenderMain(); }
+  var cap = parseFloat(val('cap') || '300');
+  api('/v1/units/' + m.unitId + '/autopay-mandate', {
+    method: 'PUT',
+    body: JSON.stringify({ paymentMethodId: S.methods[0].id, enabled: enabled, perChargeLimitMinor: Math.round(cap * 100) })
+  }).then(function () {
+    S.mandateOn = enabled;
+    S.msg = enabled
+      ? 'Autopay on — monthly bills up to $' + cap + ' are charged automatically. Anything larger waits for your confirmation.'
+      : 'Autopay off — you will pay each bill manually.';
+    rerenderMain();
+  }).catch(function (e) { S.err = e.message; rerenderMain(); });
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// Identity
+// ------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  phone        String?
+  name         String
+  passwordHash String
+  locale       String   @default("en") // "en" | "ar"
+  createdAt    DateTime @default(now())
+
+  memberships     BuildingMembership[]
+  paymentMethods  PaymentMethod[]
+  readings        MeterReading[]
+  maintenance     MaintenanceRequest[]
+  votes           Vote[]
+  reimbursements  ReimbursementClaim[]
+  auditLogs       AuditLog[]
+}
+
+enum Role {
+  PRESIDENT
+  MANAGER
+  OWNER
+  TENANT
+}
+
+model BuildingMembership {
+  id         String    @id @default(cuid())
+  userId     String
+  buildingId String
+  unitId     String?
+  role       Role
+  startDate  DateTime  @default(now())
+  endDate    DateTime? // temporal: null = active
+  user       User      @relation(fields: [userId], references: [id])
+  building   Building  @relation(fields: [buildingId], references: [id])
+  unit       Unit?     @relation(fields: [unitId], references: [id])
+
+  @@index([buildingId, role])
+  @@index([userId])
+}
+
+// ------------------------------------------------------------------
+// Building & units
+// ------------------------------------------------------------------
+
+model Building {
+  id              String   @id @default(cuid())
+  nameEn          String
+  nameAr          String?
+  address         String
+  currency        String   @default("USD") // ISO 4217
+  billingDay      Int      @default(1)     // day of month bills are issued
+  dueDay          Int      @default(10)    // day of month bills are due
+  createdAt       DateTime @default(now())
+
+  units          Unit[]
+  memberships    BuildingMembership[]
+  meters         Meter[]
+  tariffs        Tariff[]
+  expenses       Expense[]
+  periods        BillingPeriod[]
+  maintenance    MaintenanceRequest[]
+  proposals      Proposal[]
+  projects       ProjectFund[]
+  reimbursements ReimbursementClaim[]
+  invitations    Invitation[]
+  auditLogs      AuditLog[]
+}
+
+model Unit {
+  id              String   @id @default(cuid())
+  buildingId      String
+  unitNumber      String
+  floor           Int?
+  areaM2          Decimal? @db.Decimal(10, 2)
+  ownershipWeight Decimal  @default(1) @db.Decimal(10, 4)
+  building        Building @relation(fields: [buildingId], references: [id])
+
+  memberships   BuildingMembership[]
+  meters        Meter[]
+  bills         Bill[]
+  invitations   Invitation[]
+  mandate       AutopayMandate?
+  contributions ProjectContribution[]
+  moveIn        MoveInSnapshot[]
+
+  @@unique([buildingId, unitNumber])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  buildingId String
+  unitId     String
+  role       Role      @default(TENANT)
+  code       String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  building   Building  @relation(fields: [buildingId], references: [id])
+  unit       Unit      @relation(fields: [unitId], references: [id])
+}
+
+model MoveInSnapshot {
+  id          String   @id @default(cuid())
+  unitId      String
+  userId      String
+  moveDate    DateTime
+  readings    Json     // { meterId: "4200.000", ... }
+  photoUrls   Json?
+  acceptedAt  DateTime?
+  unit        Unit     @relation(fields: [unitId], references: [id])
+}
+
+// ------------------------------------------------------------------
+// Metering
+// ------------------------------------------------------------------
+
+enum MeterType {
+  GENERATOR
+  EDL
+  COLD_WATER
+  HOT_WATER
+  OTHER
+}
+
+enum ReadingStatus {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  USED_IN_BILL
+}
+
+model Meter {
+  id         String    @id @default(cuid())
+  buildingId String
+  unitId     String?   // null = common/building meter
+  type       MeterType
+  serial     String?
+  unitLabel  String    @default("kWh") // kWh, m3
+  multiplier Decimal   @default(1) @db.Decimal(10, 4)
+  active     Boolean   @default(true)
+  building   Building  @relation(fields: [buildingId], references: [id])
+  unit       Unit?     @relation(fields: [unitId], references: [id])
+  readings   MeterReading[]
+
+  @@index([buildingId, type])
+}
+
+model MeterReading {
+  id           String        @id @default(cuid())
+  meterId      String
+  value        Decimal       @db.Decimal(20, 6)
+  capturedAt   DateTime      @default(now())
+  source       String        @default("MANUAL") // MANUAL | OCR | IOT
+  photoUrl     String?
+  status       ReadingStatus @default(SUBMITTED)
+  submittedById String?
+  meter        Meter         @relation(fields: [meterId], references: [id])
+  submittedBy  User?         @relation(fields: [submittedById], references: [id])
+
+  @@index([meterId, capturedAt(sort: Desc)])
+}
+
+model Tariff {
+  id            String    @id @default(cuid())
+  buildingId    String
+  meterType     MeterType
+  ratePerUnitMinor Int    // minor units per kWh/m3, e.g. 42 = $0.42
+  fixedFeeMinor Int       @default(0)
+  currency      String    @default("USD")
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  building      Building  @relation(fields: [buildingId], references: [id])
+
+  @@index([buildingId, meterType, effectiveFrom])
+}
+
+// ------------------------------------------------------------------
+// Expenses & billing
+// ------------------------------------------------------------------
+
+enum AllocationMethod {
+  EQUAL
+  AREA
+  OWNERSHIP
+  CUSTOM
+}
+
+enum ExpenseStatus {
+  PENDING
+  ALLOCATED
+}
+
+model Expense {
+  id          String           @id @default(cuid())
+  buildingId  String
+  category    String           // ELEVATOR, CLEANING, GENERATOR_FUEL, ...
+  description String
+  amountMinor Int
+  currency    String           @default("USD")
+  receiptUrl  String?
+  allocation  AllocationMethod @default(EQUAL)
+  customSplit Json?            // { unitId: amountMinor } when CUSTOM
+  incurredAt  DateTime         @default(now())
+  status      ExpenseStatus    @default(PENDING)
+  periodId    String?
+  building    Building         @relation(fields: [buildingId], references: [id])
+  period      BillingPeriod?   @relation(fields: [periodId], references: [id])
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+}
+
+model BillingPeriod {
+  id         String       @id @default(cuid())
+  buildingId String
+  label      String       // "2026-09"
+  startDate  DateTime
+  endDate    DateTime
+  status     PeriodStatus @default(OPEN)
+  closedAt   DateTime?
+  building   Building     @relation(fields: [buildingId], references: [id])
+  bills      Bill[]
+  expenses   Expense[]
+
+  @@unique([buildingId, label])
+}
+
+enum BillStatus {
+  ISSUED
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  VOID
+}
+
+model Bill {
+  id          String     @id @default(cuid())
+  unitId      String
+  periodId    String
+  totalMinor  Int
+  currency    String     @default("USD")
+  status      BillStatus @default(ISSUED)
+  issuedAt    DateTime   @default(now())
+  dueAt       DateTime
+  unit        Unit       @relation(fields: [unitId], references: [id])
+  period      BillingPeriod @relation(fields: [periodId], references: [id])
+  lineItems   BillLineItem[]
+  payments    PaymentAttempt[]
+
+  @@unique([unitId, periodId])
+}
+
+model BillLineItem {
+  id          String  @id @default(cuid())
+  billId      String
+  description String
+  category    String  // GENERATOR, EDL, COLD_WATER, HOT_WATER, EXPENSE, PROJECT, CREDIT, ARREARS
+  quantity    Decimal? @db.Decimal(20, 6)
+  unitLabel   String?
+  amountMinor Int     // negative for credits
+  calculation Json?   // { previousReading, currentReading, rate, ... } — the proof
+  bill        Bill    @relation(fields: [billId], references: [id])
+}
+
+// ------------------------------------------------------------------
+// Payments (tokenized only — never PAN/CVV)
+// ------------------------------------------------------------------
+
+model PaymentMethod {
+  id                      String  @id @default(cuid())
+  userId                  String
+  provider                String  // STRIPE | AREEBA | TAP
+  providerCustomerId      String?
+  providerPaymentMethodId String
+  brand                   String?
+  last4                   String?
+  expMonth                Int?
+  expYear                 Int?
+  status                  String  @default("ACTIVE")
+  user                    User    @relation(fields: [userId], references: [id])
+  mandates                AutopayMandate[]
+}
+
+model AutopayMandate {
+  id                 String        @id @default(cuid())
+  unitId             String        @unique
+  paymentMethodId    String
+  enabled            Boolean       @default(true)
+  perChargeLimitMinor Int          @default(30000) // $300 default cap
+  consentVersion     String        @default("autopay-v1")
+  consentAt          DateTime      @default(now())
+  revokedAt          DateTime?
+  unit               Unit          @relation(fields: [unitId], references: [id])
+  paymentMethod      PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+}
+
+enum PaymentStatus {
+  CREATED
+  REQUIRES_ACTION
+  PROCESSING
+  CAPTURED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+model PaymentAttempt {
+  id             String        @id @default(cuid())
+  billId         String
+  amountMinor    Int
+  currency       String        @default("USD")
+  provider       String
+  providerRef    String?       @unique
+  idempotencyKey String        @unique
+  status         PaymentStatus @default(CREATED)
+  failureReason  String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  bill           Bill          @relation(fields: [billId], references: [id])
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  provider    String
+  eventId     String
+  payloadHash String
+  processedAt DateTime?
+  receivedAt  DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+// ------------------------------------------------------------------
+// Maintenance, governance, projects, reimbursements
+// ------------------------------------------------------------------
+
+enum MaintenanceStatus {
+  NEW
+  TRIAGED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+model MaintenanceRequest {
+  id          String            @id @default(cuid())
+  buildingId  String
+  unitId      String?
+  reporterId  String
+  scope       String            @default("COMMON_AREA") // COMMON_AREA | PRIVATE_UNIT
+  category    String            // PLUMBING, ELECTRICAL, ELEVATOR, ...
+  title       String
+  description String
+  priority    String            @default("MEDIUM")
+  photoUrls   Json?
+  status      MaintenanceStatus @default(NEW)
+  costMinor   Int?
+  createdAt   DateTime          @default(now())
+  building    Building          @relation(fields: [buildingId], references: [id])
+  reporter    User              @relation(fields: [reporterId], references: [id])
+}
+
+enum ProposalStatus {
+  OPEN
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+model Proposal {
+  id                String         @id @default(cuid())
+  buildingId        String
+  titleEn           String
+  titleAr           String?
+  description       String
+  estimatedCostMinor Int?
+  approvalThreshold Int            @default(50) // percent of votes cast
+  voterType         String         @default("BOTH") // OWNER | TENANT | BOTH
+  closesAt          DateTime
+  status            ProposalStatus @default(OPEN)
+  building          Building       @relation(fields: [buildingId], references: [id])
+  votes             Vote[]
+}
+
+model Vote {
+  id         String   @id @default(cuid())
+  proposalId String
+  userId     String
+  unitId     String
+  choice     String   // APPROVE | REJECT | ABSTAIN
+  castAt     DateTime @default(now())
+  proposal   Proposal @relation(fields: [proposalId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([proposalId, unitId]) // one vote per apartment
+}
+
+enum ProjectStatus {
+  FUNDING
+  FUNDED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+model ProjectFund {
+  id                     String        @id @default(cuid())
+  buildingId             String
+  title                  String
+  description            String?
+  targetMinor            Int
+  monthlyPerUnitMinor    Int
+  currency               String        @default("USD")
+  status                 ProjectStatus @default(FUNDING)
+  createdAt              DateTime      @default(now())
+  building               Building      @relation(fields: [buildingId], references: [id])
+  contributions          ProjectContribution[]
+}
+
+model ProjectContribution {
+  id          String      @id @default(cuid())
+  projectId   String
+  unitId      String
+  billLineId  String?
+  amountMinor Int
+  state       String      @default("BILLED") // BILLED | SETTLED
+  createdAt   DateTime    @default(now())
+  project     ProjectFund @relation(fields: [projectId], references: [id])
+  unit        Unit        @relation(fields: [unitId], references: [id])
+}
+
+enum ClaimStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CREDITED
+}
+
+model ReimbursementClaim {
+  id          String      @id @default(cuid())
+  buildingId  String
+  claimantId  String
+  amountMinor Int
+  description String
+  receiptUrl  String?
+  status      ClaimStatus @default(SUBMITTED)
+  createdAt   DateTime    @default(now())
+  building    Building    @relation(fields: [buildingId], references: [id])
+  claimant    User        @relation(fields: [claimantId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  buildingId String?
+  action     String
+  resource   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?     @relation(fields: [actorId], references: [id])
+  building   Building? @relation(fields: [buildingId], references: [id])
+}
