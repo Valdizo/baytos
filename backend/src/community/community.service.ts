@@ -9,6 +9,7 @@ export class CommunityService {
   // ---------------- Maintenance ----------------
   async createMaintenance(userId: string, buildingId: string, dto: any) {
     const m = await requireMembership(this.prisma, userId, buildingId);
+    if (!dto?.title?.trim()) throw new BadRequestException('title required');
     return this.prisma.maintenanceRequest.create({
       data: {
         buildingId,
@@ -49,6 +50,7 @@ export class CommunityService {
   // ---------------- Proposals & voting ----------------
   async createProposal(userId: string, buildingId: string, dto: any) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
+    if (!dto?.titleEn?.trim()) throw new BadRequestException('titleEn required');
     return this.prisma.proposal.create({
       data: {
         buildingId,
@@ -109,6 +111,8 @@ export class CommunityService {
   // ---------------- Project funds ----------------
   async createProject(userId: string, buildingId: string, dto: any) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
+    if (!dto?.title?.trim()) throw new BadRequestException('title required');
+    if (!dto?.targetMinor || dto.targetMinor <= 0) throw new BadRequestException('targetMinor must be positive');
     return this.prisma.projectFund.create({
       data: {
         buildingId,

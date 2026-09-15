@@ -8,6 +8,9 @@ export class AuthService {
   constructor(private prisma: PrismaService, private jwt: JwtService) {}
 
   async register(dto: { email: string; name: string; password: string; phone?: string; locale?: string }) {
+    if (!dto?.email?.trim()) throw new BadRequestException('email required');
+    if (!dto?.name?.trim()) throw new BadRequestException('name required');
+    if (!dto?.password) throw new BadRequestException('password required');
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
     if (exists) throw new BadRequestException('Email already registered');
     const user = await this.prisma.user.create({

@@ -8,6 +8,7 @@ export class MetersService {
 
   async createMeter(userId: string, buildingId: string, dto: any) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
+    if (!dto?.type) throw new BadRequestException('type required');
     return this.prisma.meter.create({
       data: {
         buildingId,
@@ -22,6 +23,8 @@ export class MetersService {
 
   async createTariff(userId: string, buildingId: string, dto: any) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
+    if (!dto?.meterType) throw new BadRequestException('meterType required');
+    if (dto.ratePerUnitMinor == null || dto.ratePerUnitMinor < 0) throw new BadRequestException('ratePerUnitMinor must be zero or positive');
     return this.prisma.tariff.create({
       data: {
         buildingId,
@@ -60,6 +63,16 @@ export class MetersService {
         `METER_READING_BELOW_PREVIOUS: last verified reading is ${previous.value}. Report a meter replacement or correct the value.`,
       );
     }
+    // Issued bills are immutable, so a fat-fingered reading becomes a permanently
+    // wrong statement. Reject an implausible jump rather than bill it.
+    // ponytail: flat 100x-of-previous ceiling; switch to a per-meter rolling
+    // average if real consumption ever trips it.
+    if (previous && Number(previous.value) > 0 && value > Number(previous.value) * 100) {
+      throw new BadRequestException(
+        `METER_READING_IMPLAUSIBLE: ${value} is more than 100x the last verified reading (${previous.value}). Check for a typo.`,
+      );
+    }
+    if (!Number.isFinite(value) || value > 1e12) throw new BadRequestException('Reading is out of range');
 
     const reading = await this.prisma.meterReading.create({
       data: {

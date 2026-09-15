@@ -8,6 +8,7 @@ export class BuildingsService {
   constructor(private prisma: PrismaService) {}
 
   async create(userId: string, dto: any) {
+    if (!dto?.nameEn?.trim()) throw new BadRequestException('nameEn required');
     const building = await this.prisma.building.create({
       data: {
         nameEn: dto.nameEn,
@@ -64,19 +65,26 @@ export class BuildingsService {
   async addUnits(userId: string, buildingId: string, units: any[]) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
     if (!Array.isArray(units) || units.length === 0) throw new BadRequestException('units array required');
-    return this.prisma.$transaction(
-      units.map((u) =>
-        this.prisma.unit.create({
-          data: {
-            buildingId,
-            unitNumber: String(u.unitNumber),
-            floor: u.floor ?? null,
-            areaM2: u.areaM2 ?? null,
-            ownershipWeight: u.ownershipWeight ?? 1,
-          },
-        }),
-      ),
-    );
+    if (units.some((u) => !String(u?.unitNumber ?? '').trim())) throw new BadRequestException('unitNumber required for every unit');
+    try {
+      return await this.prisma.$transaction(
+        units.map((u) =>
+          this.prisma.unit.create({
+            data: {
+              buildingId,
+              unitNumber: String(u.unitNumber),
+              floor: u.floor ?? null,
+              areaM2: u.areaM2 ?? null,
+              ownershipWeight: u.ownershipWeight ?? 1,
+            },
+          }),
+        ),
+      );
+    } catch (e: any) {
+      // P2002 = unique constraint; the only one on Unit is (buildingId, unitNumber)
+      if (e?.code === 'P2002') throw new BadRequestException('A unit with that number already exists in this building');
+      throw e;
+    }
   }
 
   async listUnits(userId: string, buildingId: string) {
@@ -110,6 +118,7 @@ export class BuildingsService {
 
   // Tenant joins with invite code; records move-in snapshot from provided readings.
   async acceptInvitation(userId: string, dto: { code: string; readings?: Record<string, string>; moveDate?: string }) {
+    if (!dto?.code?.trim()) throw new BadRequestException('code required');
     const inv = await this.prisma.invitation.findUnique({ where: { code: dto.code }, include: { unit: true } });
     if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invalid or expired invitation code');
 

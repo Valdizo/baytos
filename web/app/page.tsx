@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -72,7 +73,7 @@ function Login() {
             <h2>Create your building</h2>
             <p className="sub">
               Managing a building? Set it up below. Joining as a tenant?{' '}
-              <a href="/tenant/join" style={{ color: 'var(--cedar)', fontWeight: 600 }}>Enter your invite code instead</a>.
+              <Link href="/tenant/join" style={{ color: 'var(--cedar)', fontWeight: 600 }}>Enter your invite code instead</Link>.
             </p>
             <label>Building name (English)</label>
             <input onChange={set('nameEn')} placeholder="Cedar Residence" />
