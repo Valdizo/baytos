@@ -117,6 +117,36 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; c
   .statgrid { flex-wrap: wrap; }
 }
 
+/* A ledger table needs ~740px. Whether it fits depends on the width of the content
+   column, not the screen: at 1024px the 232px rail leaves only ~700px, so a
+   screen-width breakpoint would still clip it. Keying off the container adapts to
+   the actual space available at any size, with or without the rail. */
+main.content { container-type: inline-size; }
+
+@container (max-width: 780px) {
+  /* Stack each row into a labelled card instead of clipping it behind a sideways
+     scroll. Labels come from data-label, set from each table's own <th> text in
+     components/Shell.tsx, so this works for any table including ones added later. */
+  .ledger, .ledger tbody, .ledger tr, .ledger td { display: block; width: 100%; }
+  .ledger thead { display: none; }
+  .ledger { border: none; background: none; }
+  .ledger tr {
+    background: var(--surface); border: 1px solid var(--rule);
+    margin-bottom: 10px; padding: 6px 0; border-radius: 2px;
+  }
+  .ledger td {
+    display: flex; gap: 14px; align-items: baseline; justify-content: space-between;
+    border: none; padding: 7px 14px; text-align: right;
+  }
+  .ledger td::before {
+    content: attr(data-label); flex: 0 0 38%; text-align: left;
+    color: var(--ink-soft); font-size: 12px; font-weight: 600;
+  }
+  /* action cells have a blank header and hold buttons — give them the full width */
+  .ledger td:not([data-label]) { display: block; text-align: left; white-space: normal; }
+  .ledger td:not([data-label])::before { content: none; }
+}
+
 /* Touch targets keyed to the input device, not the screen width, so a tablet or a
    touchscreen laptop gets them too. Android asks for 48dp, iOS for 44pt; measured
    before this rule: nav links 39px, form controls 36px, "Sign out" 16px. */
