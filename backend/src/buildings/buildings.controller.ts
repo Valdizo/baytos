@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards, Patch, Delete } from '@nestjs/common';
 import { AuthGuard } from '../common/auth.guard';
 import { BuildingsService } from './buildings.service';
 
@@ -25,6 +25,16 @@ export class BuildingsController {
   @Get('buildings/:id/units')
   listUnits(@Req() req: any, @Param('id') id: string) {
     return this.svc.listUnits(req.user.sub, id);
+  }
+
+  @Patch('buildings/:id/settings')
+  updateSettings(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.svc.updateSettings(req.user.sub, id, body);
+  }
+
+  @Patch('memberships/:id/end')
+  endMembership(@Req() req: any, @Param('id') id: string) {
+    return this.svc.endMembership(req.user.sub, id);
   }
 
   @Post('units/:unitId/invitations')

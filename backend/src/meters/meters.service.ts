@@ -9,6 +9,13 @@ export class MetersService {
   async createMeter(userId: string, buildingId: string, dto: any) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
     if (!dto?.type) throw new BadRequestException('type required');
+    // One meter of each type per apartment — a duplicate would be billed twice.
+    if (dto.unitId) {
+      const existing = await this.prisma.meter.findFirst({
+        where: { unitId: dto.unitId, type: dto.type, active: true },
+      });
+      if (existing) throw new BadRequestException(`This apartment already has a ${dto.type} meter`);
+    }
     return this.prisma.meter.create({
       data: {
         buildingId,
@@ -19,6 +26,21 @@ export class MetersService {
         multiplier: dto.multiplier ?? 1,
       },
     });
+  }
+
+  // Removing a meter added by mistake. If it has readings we deactivate rather than
+  // delete, because a reading may already be referenced by an issued (immutable) bill.
+  async removeMeter(userId: string, meterId: string) {
+    const meter = await this.prisma.meter.findUnique({ where: { id: meterId } });
+    if (!meter) throw new NotFoundException('Meter not found');
+    await requireMembership(this.prisma, userId, meter.buildingId, ['PRESIDENT', 'MANAGER']);
+    const readings = await this.prisma.meterReading.count({ where: { meterId } });
+    if (readings === 0) {
+      await this.prisma.meter.delete({ where: { id: meterId } });
+      return { removed: true, deactivated: false };
+    }
+    await this.prisma.meter.update({ where: { id: meterId }, data: { active: false } });
+    return { removed: false, deactivated: true, readings };
   }
 
   async createTariff(userId: string, buildingId: string, dto: any) {

@@ -210,3 +210,15 @@ main.content { container-type: inline-size; }
 .t-seg button { flex: 1; border: 1px solid var(--rule); background: #fff; border-radius: 7px; padding: 9px; font-size: 13px; color: var(--soft); font-weight: 600; }
 .t-seg button.on { background: var(--cedar); border-color: var(--cedar); color: #fff; }
 @media (min-width: 561px) { .t-app { border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); } }
+
+/* ---------- Whish QR payment (tenant statement) ---------- */
+.whish {
+  background: var(--surface); border: 1px solid var(--rule);
+  padding: 18px 16px; margin-top: 14px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.whish img {
+  width: min(230px, 70vw); height: auto; aspect-ratio: 1;
+  background: #fff; padding: 10px; border: 1px solid var(--rule);
+}
+.whish .t-note { max-width: 42ch; }

@@ -70,6 +70,24 @@ function BillDetail() {
       )}
       {bill.status === 'PAID' && <p style={{ color: 'var(--cedar)', fontWeight: 700, textAlign: 'center' }}>Paid — thank you.</p>}
 
+      {/* Whish: the building's own QR. Scanning settles directly with the building,
+          so the payment lands outside the app — the manager marks it received. */}
+      {!['PAID', 'VOID'].includes(bill.status) && bill.period.building.whishQrData && (
+        <div className="whish">
+          <h2 className="t-h" style={{ marginTop: 22 }}>Or pay with Whish</h2>
+          <p className="t-note">
+            Scan this with your Whish app and send {money(bill.totalMinor, bill.currency)}.
+            Your statement is marked paid once {bill.period.building.nameEn} confirms it.
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={bill.period.building.whishQrData} alt={`Whish payment QR for ${bill.period.building.nameEn}`} />
+          {bill.period.building.whishRecipient && (
+            <p className="t-note" style={{ fontWeight: 600 }}>{bill.period.building.whishRecipient}</p>
+          )}
+          <p className="t-note">Check the name above matches before you send.</p>
+        </div>
+      )}
+
       {bill.payments.length > 0 && (
         <>
           <h2 className="t-h">Payment history</h2>

@@ -23,18 +23,25 @@ function Billing() {
   };
   useEffect(() => { if (id) load().catch((e) => setErr(e.message)); }, [id]);
 
-  async function openPeriod() {
+  async function openPeriod(monthOffset = 0) {
+    setErr('');
     const now = new Date();
-    const label = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await api(`/v1/buildings/${id}/periods`, {
-      method: 'POST',
-      body: JSON.stringify({
-        label,
-        startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
-        endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString(),
-      }),
-    });
-    load();
+    const d = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    try {
+      await api(`/v1/buildings/${id}/periods`, {
+        method: 'POST',
+        body: JSON.stringify({
+          label,
+          startDate: new Date(d.getFullYear(), d.getMonth(), 1).toISOString(),
+          endDate: new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString(),
+        }),
+      });
+      load();
+    } catch (e: any) {
+      // Previously this threw into the void and the button looked dead.
+      setErr(e.message);
+    }
   }
 
   async function close() {
@@ -58,7 +65,8 @@ function Billing() {
       {!dash?.openPeriod && (
         <div className="panel">
           <p style={{ marginBottom: 12 }}>No billing period is open.</p>
-          <button onClick={openPeriod}>Open this month's period</button>
+          <button onClick={() => openPeriod(0)}>Open this month's period</button>{' '}
+          <button className="quiet" onClick={() => openPeriod(1)}>Open next month instead</button>
         </div>
       )}
 

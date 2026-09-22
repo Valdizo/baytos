@@ -29,6 +29,17 @@ function Community() {
   const review = (cid: string, decision: string) =>
     api(`/v1/reimbursements/${cid}`, { method: 'PATCH', body: JSON.stringify({ decision }) }).then(load);
 
+  async function closeVote(pid: string, title: string) {
+    if (!confirm(`Close voting on "${title}"? The tally decides the outcome and no further votes are counted.`)) return;
+    try { await api(`/v1/proposals/${pid}/close`, { method: 'POST' }); load(); }
+    catch (e: any) { setErr(e.message); }
+  }
+
+  async function setProjectStatus(pid: string, status: string) {
+    try { await api(`/v1/projects/${pid}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); load(); }
+    catch (e: any) { setErr(e.message); }
+  }
+
   async function createProposal() {
     await api(`/v1/buildings/${id}/proposals`, {
       method: 'POST',
@@ -89,7 +100,13 @@ function Community() {
               <td className="num">{p.estimatedCostMinor ? money(p.estimatedCostMinor) : '—'}</td>
               <td>{p.tally.approve}</td>
               <td>{p.tally.reject}</td>
-              <td><span className={`pill ${p.status === 'APPROVED' ? 'paid' : p.status === 'REJECTED' ? 'overdue' : 'issued'}`}>{p.status.toLowerCase()}</span></td>
+              <td>
+                <span className={`pill ${p.status === 'APPROVED' ? 'paid' : p.status === 'REJECTED' ? 'overdue' : 'issued'}`}>{p.status.toLowerCase()}</span>
+                {p.status === 'OPEN' && (
+                  <> <button className="quiet" style={{ padding: '2px 8px', fontSize: 12 }}
+                             onClick={() => closeVote(p.id, p.titleEn)}>close vote</button></>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -112,7 +129,15 @@ function Community() {
               <td className="num">{money(p.monthlyPerUnitMinor)}</td>
               <td className="num money">{money(p.collectedMinor)} ({p.progressPercent}%)</td>
               <td className="num">{money(p.targetMinor)}</td>
-              <td><span className="pill issued">{p.status.toLowerCase()}</span></td>
+              <td>
+                <span className="pill issued">{p.status.toLowerCase()}</span>
+                {p.status !== 'COMPLETED' && (
+                  <> <button className="quiet" style={{ padding: '2px 8px', fontSize: 12 }}
+                             onClick={() => setProjectStatus(p.id, p.status === 'FUNDING' ? 'FUNDED' : 'COMPLETED')}>
+                    mark {p.status === 'FUNDING' ? 'funded' : 'completed'}
+                  </button></>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -39,9 +39,20 @@ export class BillingService {
 
   async openPeriod(userId: string, buildingId: string, dto: { label: string; startDate: string; endDate: string }) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
-    return this.prisma.billingPeriod.create({
-      data: { buildingId, label: dto.label, startDate: new Date(dto.startDate), endDate: new Date(dto.endDate) },
-    });
+    if (!dto?.label?.trim()) throw new BadRequestException('label required');
+    const alreadyOpen = await this.prisma.billingPeriod.findFirst({ where: { buildingId, status: 'OPEN' } });
+    if (alreadyOpen) throw new BadRequestException(`Period ${alreadyOpen.label} is still open — close it first`);
+    try {
+      return await this.prisma.billingPeriod.create({
+        data: { buildingId, label: dto.label.trim(), startDate: new Date(dto.startDate), endDate: new Date(dto.endDate) },
+      });
+    } catch (e: any) {
+      // P2002 on (buildingId,label): that month was already billed. Say so instead
+      // of leaking a 500 — and the caller can pick another label.
+      if (e?.code === 'P2002')
+        throw new BadRequestException(`A billing period labelled "${dto.label}" already exists for this building. Choose another label.`);
+      throw e;
+    }
   }
 
   // ----------------------------------------------------------------

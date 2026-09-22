@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards, Delete } from '@nestjs/common';
 import { AuthGuard } from '../common/auth.guard';
 import { MetersService } from './meters.service';
 
@@ -25,6 +25,11 @@ export class MetersController {
   @Get('buildings/:id/reading-grid')
   grid(@Req() req: any, @Param('id') id: string) {
     return this.svc.readingGrid(req.user.sub, id);
+  }
+
+  @Delete('meters/:id')
+  removeMeter(@Req() req: any, @Param('id') id: string) {
+    return this.svc.removeMeter(req.user.sub, id);
   }
 
   @Post('meters/:id/readings')

@@ -10,6 +10,7 @@ function Readings() {
   const id = useSearchParams().get('id') || '';
   const [grid, setGrid] = useState<any[]>([]);
   const [entry, setEntry] = useState<Record<string, string>>({});
+  const [readDate, setReadDate] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -19,8 +20,14 @@ function Readings() {
   async function submit(meterId: string) {
     setErr(''); setMsg('');
     try {
-      await api(`/v1/meters/${meterId}/readings`, { method: 'POST', body: JSON.stringify({ value: entry[meterId] }) });
-      setMsg('Reading saved and verified.');
+      await api(`/v1/meters/${meterId}/readings`, {
+        method: 'POST',
+        // capturedAt lets you record an opening/move-in reading dated before the
+        // billing period, which consumption is measured against. Without one the
+        // first period of a new building has nothing to subtract from.
+        body: JSON.stringify(readDate ? { value: entry[meterId], capturedAt: new Date(readDate).toISOString() } : { value: entry[meterId] }),
+      });
+      setMsg(readDate ? `Reading saved, dated ${new Date(readDate).toLocaleDateString()}.` : 'Reading saved and verified.');
       load();
     } catch (e: any) { setErr(e.message); }
   }
@@ -33,6 +40,14 @@ function Readings() {
     <Shell buildingId={id}>
       <h1>Meter readings</h1>
       <p className="sub">Enter this month's reading for every meter. Tenant-submitted readings appear here for verification.</p>
+      <div className="panel" style={{ maxWidth: 560, marginBottom: 18 }}>
+        <label htmlFor="readdate">Reading date — leave blank for today</label>
+        <input id="readdate" type="date" value={readDate} onChange={(e) => setReadDate(e.target.value)} />
+        <p className="sub" style={{ margin: '8px 0 0', fontSize: 13 }}>
+          Set a date before the billing period started to record an opening reading for a new
+          building or a new meter. Consumption is measured from it.
+        </p>
+      </div>
       {msg && <div className="ok">{msg}</div>}
       {err && <div className="error">{err}</div>}
       <table className="ledger">

@@ -64,6 +64,10 @@ model Building {
   currency        String   @default("USD") // ISO 4217
   billingDay      Int      @default(1)     // day of month bills are issued
   dueDay          Int      @default(10)    // day of month bills are due
+  // Whish Money payment QR. Tenants scan it to pay the building directly.
+  // Stored as a data: URL — a QR is a few tens of KB and needs no object store.
+  whishQrData     String?
+  whishRecipient  String?  // name/number shown under the QR so tenants can verify
   createdAt       DateTime @default(now())
 
   units          Unit[]

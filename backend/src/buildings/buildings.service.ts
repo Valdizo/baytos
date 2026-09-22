@@ -62,6 +62,38 @@ export class BuildingsService {
     };
   }
 
+  // Building settings: Whish payment QR, currency, billing/due days.
+  async updateSettings(userId: string, buildingId: string, dto: any) {
+    await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
+    const data: any = {};
+    if (dto.whishQrData !== undefined) {
+      if (dto.whishQrData && !/^data:image\/(png|jpe?g|webp);base64,/.test(dto.whishQrData))
+        throw new BadRequestException('whishQrData must be a base64 image data URL');
+      if (dto.whishQrData && dto.whishQrData.length > 400_000)
+        throw new BadRequestException('QR image too large — keep it under ~300KB');
+      data.whishQrData = dto.whishQrData || null;
+    }
+    if (dto.whishRecipient !== undefined) data.whishRecipient = dto.whishRecipient?.trim() || null;
+    if (dto.currency !== undefined) data.currency = String(dto.currency).toUpperCase().slice(0, 3);
+    if (dto.dueDay !== undefined) {
+      const d = Number(dto.dueDay);
+      if (!Number.isInteger(d) || d < 1 || d > 28) throw new BadRequestException('dueDay must be 1-28');
+      data.dueDay = d;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('nothing to update');
+    return this.prisma.building.update({ where: { id: buildingId }, data });
+  }
+
+  // A tenant moving out: close the membership instead of deleting it, so their
+  // bills and readings stay attached to the apartment's history.
+  async endMembership(userId: string, membershipId: string) {
+    const m = await this.prisma.buildingMembership.findUnique({ where: { id: membershipId } });
+    if (!m) throw new NotFoundException('Membership not found');
+    await requireMembership(this.prisma, userId, m.buildingId, ['PRESIDENT', 'MANAGER']);
+    if (m.endDate) throw new BadRequestException('This tenancy has already ended');
+    return this.prisma.buildingMembership.update({ where: { id: membershipId }, data: { endDate: new Date() } });
+  }
+
   async addUnits(userId: string, buildingId: string, units: any[]) {
     await requireMembership(this.prisma, userId, buildingId, ['PRESIDENT', 'MANAGER']);
     if (!Array.isArray(units) || units.length === 0) throw new BadRequestException('units array required');
@@ -104,6 +136,18 @@ export class BuildingsService {
     const unit = await this.prisma.unit.findUnique({ where: { id: unitId } });
     if (!unit) throw new NotFoundException('Unit not found');
     await requireMembership(this.prisma, userId, unit.buildingId, ['PRESIDENT', 'MANAGER']);
+    // One active tenant per apartment: a second membership would mean two people
+    // billed for and seeing the same statements.
+    if ((role || 'TENANT') === 'TENANT') {
+      const occupant = await this.prisma.buildingMembership.findFirst({
+        where: { unitId, role: 'TENANT', endDate: null },
+        include: { user: { select: { name: true } } },
+      });
+      if (occupant)
+        throw new BadRequestException(
+          `This apartment is occupied by ${occupant.user.name}. End their tenancy before inviting a new tenant.`,
+        );
+    }
     const code = randomBytes(4).toString('hex').toUpperCase();
     return this.prisma.invitation.create({
       data: {
@@ -121,6 +165,12 @@ export class BuildingsService {
     if (!dto?.code?.trim()) throw new BadRequestException('code required');
     const inv = await this.prisma.invitation.findUnique({ where: { code: dto.code }, include: { unit: true } });
     if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invalid or expired invitation code');
+    if (inv.role === 'TENANT') {
+      const occupant = await this.prisma.buildingMembership.findFirst({
+        where: { unitId: inv.unitId, role: 'TENANT', endDate: null },
+      });
+      if (occupant) throw new BadRequestException('This apartment already has an active tenant');
+    }
 
     const [membership] = await this.prisma.$transaction([
       this.prisma.buildingMembership.create({

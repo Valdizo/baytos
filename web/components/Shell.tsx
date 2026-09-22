@@ -10,6 +10,7 @@ const nav = [
   ['expenses', 'Expenses'],
   ['billing', 'Billing'],
   ['community', 'Maintenance & votes'],
+  ['settings', 'Settings'],
 ];
 
 export default function Shell({ buildingId, children }: { buildingId: string; children: React.ReactNode }) {
