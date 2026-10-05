@@ -1,6 +1,7 @@
 # Baytos — Handoff to Team
 
-Snapshot date: 2026-09-14. Written for whoever picks up the project next.
+Snapshot date: 2026-09-14, updated 2026-10-05. Written for whoever picks up
+the project next.
 Read this end-to-end before touching anything.
 
 ## 1. What Baytos is
@@ -43,7 +44,7 @@ roll-forward, reimbursement credits, period/snapshot boundaries, and
 immutability of `USED_IN_BILL` readings. See
 `2026-09-07-billing-engine-unit-tests.md`.
 
-### Phase 2 — Capacitor native wrap (iOS done, Android not started)
+### Phase 2 — Capacitor native wrap (iOS done, Android done 2026-10-05)
 Web app converted to `output: 'export'` (16 static pages), query-string
 routing (`?id=`) replaced dynamic segments, Capacitor 8 configured with
 `appId: com.baytos.app`, both `web/ios/` and `web/android/` projects
@@ -62,7 +63,10 @@ a regression from the Capacitor refactor. See
 `2026-09-10-tenant-invite-bounce-fix.md` — that doc's Verification
 section explicitly flags that behavioral confirmation in the Simulator
 (steps a and b) is still pending; the fix is present in the built
-bundle but needs a manual click-through.
+bundle but needs a manual click-through. **Resolved 2026-10-05** — the
+join flow was click-tested four times on Android. The `?next=` fix was
+correct all along; the page was simply unreachable until a raw `<a>` in
+`app/page.tsx` was replaced with a `next/link`.
 
 **Android:** **done (2026-10-05).** Built, installed and click-tested end to
 end on a Pixel 9 emulator (Android 16) against the real backend — every manager
