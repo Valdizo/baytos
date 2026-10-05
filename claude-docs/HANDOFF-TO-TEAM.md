@@ -64,11 +64,15 @@ section explicitly flags that behavioral confirmation in the Simulator
 (steps a and b) is still pending; the fix is present in the built
 bundle but needs a manual click-through.
 
-**Android:** not started. Android Studio is **not installed** on the
-machine that did this work. `web/android/` exists as a scaffolded
-Gradle project but has never been opened or built.
+**Android:** **done (2026-10-05).** Built, installed and click-tested end to
+end on a Pixel 9 emulator (Android 16) against the real backend — every manager
+and tenant flow, including the tenant join-code flow whose verification was
+pending. Two blockers had to be cleared first (mixed content blocked every API
+call; the invite-code link was a raw `<a>` and unreachable on Android), plus
+eight flows that could not be completed at all. See
+`2026-10-05-android-bringup-fixes-and-whish-qr.md`.
 
-## 3. What's explicitly next — Android
+## 3. What was next — Android (done 2026-10-05; see that date's entry)
 
 In order:
 
@@ -208,6 +212,11 @@ same gotchas.
   refactor, Suspense-wrapper pattern, the `NEXT_PUBLIC_API_URL`
   device/emulator matrix. **Read this before touching routing or
   before running the Android build for the first time.**
+- `2026-10-05-android-bringup-fixes-and-whish-qr.md` — Android bring-up on a
+  second machine, the mixed-content and hard-navigation blockers, the overflow
+  bug that also broke vertical scrolling, eight uncompletable flows, the inert
+  ValidationPipe, and Whish QR payments. **Read this before any further Android
+  or billing work** — it also lists what is still open.
 - `2026-09-10-tenant-invite-bounce-fix.md` — the join-flow bug found
   during iOS Simulator testing and its fix (`?next=` redirect through
   `/`). Includes an explicit pending-verification note: the fix is in
